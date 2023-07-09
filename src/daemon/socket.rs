@@ -3,6 +3,7 @@ use std::{
     os::unix::net::UnixListener,
 };
 
+#[derive(Debug)]
 pub struct IdleInhibitorSocket {
     path: String,
     socket: UnixListener,
@@ -11,10 +12,11 @@ pub struct IdleInhibitorSocket {
 impl IdleInhibitorSocket {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("$XDG_RUNTIME_DIR is not set");
-        const SOCKET_FILE: &str = "wayland-idle-inhibitor.sock";
+        const SOCKET_FILE: &str = "wayland-idle-inhibitor";
 
         let path = format!("{runtime_dir}/{SOCKET_FILE}");
         let socket = UnixListener::bind(&path)?;
+        socket.set_nonblocking(true)?;
         Ok(Self { path, socket })
     }
 }
@@ -35,6 +37,6 @@ impl DerefMut for IdleInhibitorSocket {
 
 impl Drop for IdleInhibitorSocket {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path).unwrap();
+        std::fs::remove_file(&self.path).unwrap();
     }
 }

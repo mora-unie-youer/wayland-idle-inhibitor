@@ -14,6 +14,9 @@ enum Command {
     /// Daemon mode
     Daemon,
 
+    // Get idle inhibitor status
+    Status,
+
     /// Enable idle inhibitor
     Enable,
 
@@ -28,6 +31,7 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Command::Daemon => daemon::start_daemon(),
+        Command::Status => println!("Status"),
         Command::Enable => println!("Enable"),
         Command::Disable => println!("Disable"),
         Command::Toggle => println!("Toggle"),

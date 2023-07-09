@@ -1,5 +1,3 @@
-use std::{sync::atomic::Ordering, time::Duration};
-
 use lockfile::Lockfile;
 use wayland_client::Connection;
 
@@ -44,24 +42,10 @@ pub fn start_daemon() {
     let _registry = display.get_registry(&qh, ());
 
     // Create daemon state
-    let mut state = IdleInhibitorDaemon::new(qh);
+    let mut state = IdleInhibitorDaemon::new(&mut event_queue);
 
-    // Handling signals
-    signal_hook::flag::register(signal_hook::consts::SIGINT, state.terminate.clone())
-        .expect("Couldn't setup SIGINT hook");
-    signal_hook::flag::register(signal_hook::consts::SIGTERM, state.terminate.clone())
-        .expect("Couldn't setup SIGTERM hook");
-
-    // Initializing Wayland client
-    event_queue.roundtrip(&mut state).unwrap();
-    state.enable_idle_inhibit();
-
-    while !state.terminate.load(Ordering::Relaxed) {
-        // TODO: process socket
-        std::thread::sleep(Duration::from_secs(1));
-
-        event_queue.roundtrip(&mut state).unwrap();
-    }
+    // Run daemon state
+    state.run(&mut event_queue, socket_listener);
 
     // Release lockfile
     lockfile.release().expect("Couldn't release lockfile");
