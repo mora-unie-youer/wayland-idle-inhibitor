@@ -1,7 +1,7 @@
 { pkgs, ... }:
 
 pkgs.devShell.mkShell {
-  name = "hyprland-idle-inhibitor";
+  name = "wayland-idle-inhibitor";
   packages = with pkgs; [
     # Toolchain required for C + Rust binaries building
     binutils

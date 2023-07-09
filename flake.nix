@@ -1,5 +1,5 @@
 {
-  description = "hyprland-idle-inhibitor - Program to inhibit idle state";
+  description = "wayland-idle-inhibitor - Program to inhibit idle state in Wayland environment";
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
