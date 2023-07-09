@@ -33,14 +33,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for HyprlandIdleInhibitor {
                     state.base_surface = Some(surface);
                 }
                 "zwp_idle_inhibit_manager_v1" => {
-                    let idle_inhibit_manager = registry
-                        .bind::<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, _, _>(
-                        name,
-                        1,
-                        qh,
-                        (),
-                    );
-                    state.idle_inhibit_manager = Some(idle_inhibit_manager);
+                    state.idle_inhibit_manager = Some(registry.bind(name, 1, qh, ()));
                 }
                 _ => {}
             }
