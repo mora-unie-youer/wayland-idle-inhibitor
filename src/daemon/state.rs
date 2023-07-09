@@ -1,12 +1,5 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::sync::{atomic::AtomicBool, Arc};
 
-use lockfile::Lockfile;
 use wayland_client::{
     protocol::{wl_compositor, wl_registry, wl_surface},
     Connection, Dispatch, QueueHandle,
@@ -16,8 +9,8 @@ use wayland_protocols::wp::idle_inhibit::zv1::client::{
 };
 
 #[derive(Debug)]
-struct IdleInhibitorDaemon {
-    terminate: Arc<AtomicBool>,
+pub struct IdleInhibitorDaemon {
+    pub terminate: Arc<AtomicBool>,
     queue_handle: QueueHandle<Self>,
 
     base_surface: Option<wl_surface::WlSurface>,
@@ -26,7 +19,18 @@ struct IdleInhibitorDaemon {
 }
 
 impl IdleInhibitorDaemon {
-    fn create_idle_inhibitor(&self) -> zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1 {
+    pub fn new(qh: QueueHandle<Self>) -> Self {
+        Self {
+            terminate: Arc::new(AtomicBool::new(false)),
+            queue_handle: qh,
+
+            base_surface: None,
+            idle_inhibit_manager: None,
+            idle_inhibitor: None,
+        }
+    }
+
+    pub fn create_idle_inhibitor(&self) -> zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1 {
         if self.base_surface.is_none() || self.idle_inhibit_manager.is_none() {
             panic!("Surface and idle inhibit manager were not initialized");
         }
@@ -36,7 +40,7 @@ impl IdleInhibitorDaemon {
         idle_inhibit_manager.create_inhibitor(surface, &self.queue_handle, ())
     }
 
-    fn toggle_idle_inhibit(&mut self) {
+    pub fn toggle_idle_inhibit(&mut self) {
         if let Some(idle_inhibitor) = &self.idle_inhibitor {
             idle_inhibitor.destroy();
             self.idle_inhibitor = None;
@@ -45,13 +49,13 @@ impl IdleInhibitorDaemon {
         }
     }
 
-    fn enable_idle_inhibit(&mut self) {
+    pub fn enable_idle_inhibit(&mut self) {
         if self.idle_inhibitor.is_none() {
             self.idle_inhibitor = Some(self.create_idle_inhibitor());
         }
     }
 
-    fn disable_idle_inhibit(&mut self) {
+    pub fn disable_idle_inhibit(&mut self) {
         if let Some(idle_inhibitor) = &self.idle_inhibitor {
             idle_inhibitor.destroy();
             self.idle_inhibitor = None;
@@ -138,54 +142,4 @@ impl Dispatch<zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1, ()> for IdleInhibitorDa
     ) {
         todo!()
     }
-}
-
-fn create_lockfile() -> Result<Lockfile, lockfile::Error> {
-    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("$XDG_RUNTIME_DIR is not set");
-    const LOCK_FILE: &str = "wayland-idle-inhibitor.lock";
-
-    let path = format!("{runtime_dir}/{LOCK_FILE}");
-    Lockfile::create(path)
-}
-
-pub fn start_daemon() {
-    // Create lockfile
-    let lockfile =
-        create_lockfile().expect("Couldn't create lockfile: maybe there's another instance?");
-
-    // Create wayland client connection
-    let conn = Connection::connect_to_env().expect("Couldn't connect to Wayland socket");
-    let display = conn.display();
-
-    let mut event_queue = conn.new_event_queue();
-    let qh = event_queue.handle();
-    let _registry = display.get_registry(&qh, ());
-
-    // Create daemon state
-    let mut state = IdleInhibitorDaemon {
-        terminate: Arc::new(AtomicBool::new(false)),
-        queue_handle: qh,
-
-        base_surface: None,
-        idle_inhibit_manager: None,
-        idle_inhibitor: None,
-    };
-
-    // Handling signals
-    signal_hook::flag::register(signal_hook::consts::SIGINT, state.terminate.clone())
-        .expect("Couldn't setup SIGINT hook");
-    signal_hook::flag::register(signal_hook::consts::SIGTERM, state.terminate.clone())
-        .expect("Couldn't setup SIGTERM hook");
-
-    // Initializing Wayland client
-    event_queue.roundtrip(&mut state).unwrap();
-    while !state.terminate.load(Ordering::Relaxed) {
-        // TODO: process socket
-        std::thread::sleep(Duration::from_secs(1));
-
-        event_queue.dispatch_pending(&mut state).unwrap();
-    }
-
-    // Release lockfile
-    lockfile.release().expect("Couldn't release lockfile");
 }

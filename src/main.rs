@@ -26,8 +26,6 @@ enum Command {
 
 fn main() {
     let cli = Cli::parse();
-    dbg!(&cli);
-
     match cli.command {
         Command::Daemon => daemon::start_daemon(),
         Command::Enable => println!("Enable"),
