@@ -8,8 +8,45 @@ use wayland_protocols::wp::idle_inhibit::zv1::client::{
 
 #[derive(Debug)]
 struct HyprlandIdleInhibitor {
+    queue_handle: QueueHandle<Self>,
+
     base_surface: Option<wl_surface::WlSurface>,
     idle_inhibit_manager: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
+    idle_inhibitor: Option<zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1>,
+}
+
+impl HyprlandIdleInhibitor {
+    fn create_idle_inhibitor(&self) -> zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1 {
+        if self.base_surface.is_none() || self.idle_inhibit_manager.is_none() {
+            panic!("Surface and idle inhibit manager were not initialized");
+        }
+
+        let surface = self.base_surface.as_ref().unwrap();
+        let idle_inhibit_manager = self.idle_inhibit_manager.as_ref().unwrap();
+        idle_inhibit_manager.create_inhibitor(surface, &self.queue_handle, ())
+    }
+
+    fn toggle_idle_inhibit(&mut self) {
+        if let Some(idle_inhibitor) = &self.idle_inhibitor {
+            idle_inhibitor.destroy();
+            self.idle_inhibitor = None;
+        } else {
+            self.idle_inhibitor = Some(self.create_idle_inhibitor());
+        }
+    }
+
+    fn enable_idle_inhibit(&mut self) {
+        if self.idle_inhibitor.is_none() {
+            self.idle_inhibitor = Some(self.create_idle_inhibitor());
+        }
+    }
+
+    fn disable_idle_inhibit(&mut self) {
+        if let Some(idle_inhibitor) = &self.idle_inhibitor {
+            idle_inhibitor.destroy();
+            self.idle_inhibitor = None;
+        }
+    }
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for HyprlandIdleInhibitor {
@@ -102,9 +139,13 @@ fn main() {
     let _registry = display.get_registry(&qh, ());
 
     let mut state = HyprlandIdleInhibitor {
+        queue_handle: qh,
+
         base_surface: None,
         idle_inhibit_manager: None,
+        idle_inhibitor: None,
     };
 
+    // Initializing Wayland client
     event_queue.roundtrip(&mut state).unwrap();
 }
