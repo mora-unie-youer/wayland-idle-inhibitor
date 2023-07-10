@@ -1,10 +1,9 @@
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::{Read, Write},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
 };
 
 use wayland_client::{
@@ -14,6 +13,8 @@ use wayland_client::{
 use wayland_protocols::wp::idle_inhibit::zv1::client::{
     zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1,
 };
+
+use crate::Command;
 
 use super::socket::IdleInhibitorSocket;
 
@@ -29,16 +30,9 @@ pub struct IdleInhibitorDaemon {
 
 impl IdleInhibitorDaemon {
     pub fn new(event_queue: &mut EventQueue<Self>) -> Self {
-        let terminate = Arc::new(AtomicBool::new(false));
-        signal_hook::flag::register(signal_hook::consts::SIGINT, terminate.clone())
-            .expect("Couldn't setup SIGINT hook");
-        signal_hook::flag::register(signal_hook::consts::SIGTERM, terminate.clone())
-            .expect("Couldn't setup SIGTERM hook");
-
-        let queue_handle = event_queue.handle();
         let mut state = Self {
-            terminate,
-            queue_handle,
+            terminate: Arc::new(AtomicBool::new(false)),
+            queue_handle: event_queue.handle(),
 
             base_surface: None,
             idle_inhibit_manager: None,
@@ -55,24 +49,25 @@ impl IdleInhibitorDaemon {
     }
 
     pub fn run(&mut self, event_queue: &mut EventQueue<Self>, socket: IdleInhibitorSocket) {
-        let mut incoming = socket.incoming();
-        while !self.terminate.load(Ordering::SeqCst) {
-            if let Some(Ok(mut client)) = incoming.next() {
-                let reader = BufReader::new(client.try_clone().unwrap());
-                let command = reader.lines().next().unwrap().unwrap();
-                match &command[..] {
-                    "status" => client.write_all(&[self.is_enabled() as u8]).unwrap(),
-                    "disable" => self.disable_idle_inhibit(),
-                    "enable" => self.enable_idle_inhibit(),
-                    "toggle" => self.toggle_idle_inhibit(),
-                    _ => (),
-                }
-
-                self.roundtrip(event_queue);
-            } else {
-                // Process socket every 1 second
-                std::thread::sleep(Duration::from_secs(1));
+        for mut client in socket.incoming().flatten() {
+            // Check if we need to terminate daemon
+            if self.terminate.load(Ordering::SeqCst) {
+                break;
             }
+
+            let mut data = [0xff];
+            client.read_exact(&mut data).unwrap();
+
+            match Command::from(data[0]) {
+                Command::Disable => self.disable_idle_inhibit(),
+                Command::Enable => self.enable_idle_inhibit(),
+                Command::Toggle => self.toggle_idle_inhibit(),
+                _ => (),
+            }
+
+            // Send to client anyway if idle inhibitor is enabled
+            client.write_all(&[self.is_enabled() as u8]).unwrap();
+            self.roundtrip(event_queue);
         }
     }
 

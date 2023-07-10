@@ -1,9 +1,11 @@
+use std::{os::unix::net::UnixStream, sync::atomic::Ordering};
+
 use lockfile::Lockfile;
 use wayland_client::Connection;
 
 use self::{socket::IdleInhibitorSocket, state::IdleInhibitorDaemon};
 
-mod socket;
+pub mod socket;
 mod state;
 
 fn create_lockfile() -> Result<Lockfile, lockfile::Error> {
@@ -43,6 +45,25 @@ pub fn start_daemon() {
 
     // Create daemon state
     let mut state = IdleInhibitorDaemon::new(&mut event_queue);
+
+    // Setup interrupt and terminate handlers
+    // UNSAFE: Only because this part of crate is unsafe, and there's no other way to do this
+    // The only error could be, if client is doing request and at the same time daemon stops.
+    // But I don't think that some person would do this :P
+    unsafe {
+        const TERM_SIGNALS: [i32; 2] = [signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM];
+        for signal in TERM_SIGNALS {
+            let socket_addr = socket_listener.local_addr().unwrap();
+            let terminate = state.terminate.clone();
+            signal_hook::low_level::register(signal, move || {
+                // Store 'true' in 'terminate' boolean
+                terminate.store(true, Ordering::SeqCst);
+                // Create connection to socket to reach termination check
+                UnixStream::connect_addr(&socket_addr).unwrap();
+            })
+            .expect("Couldn't setup signal handler");
+        }
+    }
 
     // Run daemon state
     state.run(&mut event_queue, socket_listener);

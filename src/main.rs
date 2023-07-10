@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
-mod daemon;
+mod client;
+pub mod daemon;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -10,7 +11,7 @@ struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
-enum Command {
+pub enum Command {
     /// Daemon mode
     Daemon,
 
@@ -27,13 +28,24 @@ enum Command {
     Toggle,
 }
 
+/// Needed for command and u8 conversion
+impl From<u8> for Command {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Self::Daemon,
+            1 => Self::Status,
+            2 => Self::Enable,
+            3 => Self::Disable,
+            4 => Self::Toggle,
+            _ => panic!("Incorrect command value"),
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     match cli.command {
         Command::Daemon => daemon::start_daemon(),
-        Command::Status => println!("Status"),
-        Command::Enable => println!("Enable"),
-        Command::Disable => println!("Disable"),
-        Command::Toggle => println!("Toggle"),
+        cmd => client::start_client(cmd),
     }
 }
