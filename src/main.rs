@@ -15,7 +15,7 @@ pub enum Command {
     /// Daemon mode
     Daemon,
 
-    // Get idle inhibitor status
+    /// Get idle inhibitor status
     Status,
 
     /// Enable idle inhibitor
